@@ -7,6 +7,7 @@
 #include <Adafruit_SSD1306.h>
 #include <ESP8266HTTPClient.h>
 #include <ArduinoJson.h>
+#include <time.h>
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -19,6 +20,7 @@ const char* ssid = "POCO X3 Pro";
 const char* password = "xxxx";
 
 const char* serverName = "https://api.digitransit.fi/routing/v2/hsl/gtfs/v1";
+time_t      nowTime;
 
 // Example GraphQL query body
 const char* query = R"(
@@ -95,16 +97,16 @@ void setup() {
   display.setTextColor(SSD1306_WHITE);
 }
 
-String formatTime(int dep) {
-  int hours = dep / 3600;
-  int minutes = (dep % 3600) / 60;
+String formatTime(int arv) {
+  int hours = arv / 3600;
+  int minutes = (arv % 3600) / 60;
   char buf[6];
   sprintf(buf, "%02d:%02d", hours, minutes);
   return String(buf);
 }
 
 String formatMinute(int interval) {
-  int minutes = interval % (3600 * 60);
+  int minutes = interval / 60;
   char buf[6];
   sprintf(buf, "%d", minutes);
   return String(buf);
@@ -128,7 +130,7 @@ void loop() {
       https.addHeader("Content-Type", "application/json");
 
       // Send POST request with GraphQL query
-      String body = F("{\"query\": \"{ stop(id: \\\"HSL:1113140\\\") { name stoptimesWithoutPatterns(numberOfDepartures: 3) { scheduledArrival realtimeArrival trip { routeShortName } } } }\"}");
+      String body = F("{\"query\": \"{ stop(id: \\\"HSL:1113140\\\") { name stoptimesWithoutPatterns(numberOfDepartures: 3) { scheduledArrival realtimeArrival serviceDay trip { routeShortName } } } }\"}");
       int httpCode = https.POST(body);
       // int httpCode = https.POST(String("{\"query\": \"") + query + "\"}");
       if (httpCode > 0) {
@@ -146,11 +148,12 @@ void loop() {
         display.clearDisplay();
         display.setCursor(0,0);
         for (JsonObject t : times) {
-          int arv = t["realtimeArrival"];
-          int now = t["realtime"];
-          int interval = arv - now;
+          int arrival = t["realtimeArrival"];
+          int today = t["serviceDay"];
+          time(&nowTime);
+          int waitTime = today + arrival - nowTime;
           const char* route = t["trip"]["routeShortName"];
-          showData(stopName, route, arv, interval);
+          showData(stopName, route, arrival, waitTime);
         }
         display.display();
         delay(5000);
